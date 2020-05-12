@@ -4,7 +4,7 @@ block_cipher = None
 
 
 a = Analysis(['audio_trans.py'],
-             pathex=['D:\\pycode\\tools\\GUI_relational'],
+             pathex=['d:\\pycode\\tools\\GUI_relational'],
              binaries=[],
              datas=[],
              hiddenimports=[],

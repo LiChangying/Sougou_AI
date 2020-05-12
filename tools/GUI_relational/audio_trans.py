@@ -9,7 +9,8 @@ import time
 import numpy as np
 import openpyxl
 import subprocess
-
+import wave
+from pydub import AudioSegment
 # # 创建全局变量
 # file_num = 0
 # file_cnt = 0
@@ -26,18 +27,23 @@ def begin_trans():
     if os.path.isdir(src_file_path.get()):
         for roots, folder, files in os.walk(src_file_path.get()):
             file_cnt = 0
-            for file in files:
+            for file in sorted(files):
                 # 统计文件个数
                 file_num = len(files)
                 # 记录文件index
                 file_cnt += 1
                 audio_path = os.path.join(roots,file)
-                save_path = os.path.join(tgt_file_path.get(),file.split('.')[0] + '.' + tgt_format)
+                save_path = os.path.join(tgt_file_path.get(), file.split('.')[0] + '.' + tgt_format)
+                if os.path.exists(save_path):
+                    os.remove(save_path)
                 audio_trans(src_format, tgt_format, audio_path, save_path)
                 trans_progress(canvas, file_num, file_cnt)
     else:
         save_path = os.path.join(tgt_file_path.get(), os.path.split(src_file_path.get())[-1].split('.')[0] + '.' + tgt_format)
+        if os.path.exists(save_path):
+            os.remove(save_path)
         audio_trans(src_format, tgt_format, src_file_path.get(), save_path)
+        trans_progress(canvas, 1, 1)
 
 '''
     暂停转换音频格式任务响应
@@ -56,9 +62,14 @@ def cancel_trans():
 '''
     显示转换进度条
 '''
-def trans_progress(canvas, file_num, file_cnt):
+def trans_progress(canvas, file_num, file_cnt, color="green"):
+    if color == "white":
+        fill_line = canvas.create_rectangle(1.5, 1.5, 0, 23, width=0, fill=color)
+        canvas.coords(fill_line, (0, 0, 430, 60))
+        window.update()
+        return
     # 填充进度条
-    fill_line = canvas.create_rectangle(1.5, 1.5, 0, 23, width=0, fill="green")
+    fill_line = canvas.create_rectangle(1.5, 1.5, 0, 23, width=0, fill=color)
     x = file_num  # 未知变量，可更改
     n = 430 * file_cnt / x   # 465是矩形填充满的次数
     canvas.coords(fill_line, (0, 0, n, 60))
@@ -97,39 +108,43 @@ def set_frame(window):
 '''
 def select_src_file():
     # 选择文件path_接收文件地址
-    src_file_path = tk.filedialog.askopenfilename()
+    src_file_path = tk.filedialog.askopenfilename().replace('/','\\')
     if src_file_path != '':
         print(src_file_path)
         entry_src_file_path_input.delete(0, tk.END)  # 清空文本框
         entry_src_file_path_input.insert(tk.END, src_file_path)  # 填充文本框
+    trans_progress(canvas, 1, 0, "white")
 '''
     选择文件夹
 '''
 def select_src_folder():
-    src_file_path = tk.filedialog.askdirectory()
+    src_file_path = tk.filedialog.askdirectory().replace('/','\\')
     if src_file_path != '':
         print(src_file_path)
         entry_src_file_path_input.delete(0,tk.END)          #清空文本框
         entry_src_file_path_input.insert(tk.END,src_file_path)  #填充文本框
+    trans_progress(canvas, 1, 0, "white")
 
 '''
     选择目标文件夹
 '''
 def select_tgt_folder():
-    tgt_file_path = tk.filedialog.askdirectory()
+    tgt_file_path = tk.filedialog.askdirectory().replace('/','\\')
     if tgt_file_path != '':
         print(tgt_file_path)
         entry_tgt_file_path_input.delete(0,tk.END)          #清空文本框
         entry_tgt_file_path_input.insert(tk.END,tgt_file_path)  #填充文本框
+    trans_progress(canvas, 1, 0, "white")
 
 
 '''
     音频类型转化，使用ffmpeg工具
 '''
 def audio_trans(src_format,tgt_format,src_file_path,tgt_file_path):
-    if tgt_format == 'wav':
+    if tgt_format == 'wav' and src_format not in  ['pcm', 'mp3']:
         try:
-            cmd_trans = "ffmpeg -f s16be -ar 16000 -ac 1 -acodec pcm_s16be -i %s %s" %(src_file_path, tgt_file_path)
+            # cmd_trans = "ffmpeg -f s16be -ar 16000 -ac 1 -acodec pcm_s16be -i %s %s" %(src_file_path, tgt_file_path)
+            cmd_trans = "ffmpeg -i %s -f wav -ar 16000 -ac 1 %s" % (src_file_path, tgt_file_path)
             print(cmd_trans)
             # os.system(cmd_trans)
             res = subprocess.call(cmd_trans, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -137,13 +152,19 @@ def audio_trans(src_format,tgt_format,src_file_path,tgt_file_path):
             return True
         except:
             return False
+    elif tgt_format == 'wav' and src_format == 'pcm':
+        return pcm_to_wav(src_file_path, tgt_file_path)
+    elif tgt_format == 'wav' and src_format == 'mp3':
+        return mp3_to_wav(src_file_path, tgt_file_path)
+    elif tgt_format == 'mp3' and src_format == 'wav':
+        return wav_to_mp3(src_file_path, tgt_file_path)
     else:
         if src_format == 'wav' and tgt_format == 'pcm':
             return  wav_to_pcm(src_file_path, tgt_file_path)
     # wav转pcm
     cmd_trans = r"ffmpeg -i %s -f s16be -ar 8000 -acodec pcm_s16be %s"
     #pcm转wav
-    cmd_trans = r"ffmpeg -f s16be -ar 8000 -ac 2 -acodec pcm_s16be -i %s output.wav"
+    cmd_trans = r"ffmpeg -i %s -f s16be -ar 8000 -ac 2 -acodec pcm_s16be output.wav"
 
 '''
     wav 转 pcm，去除44字节头信息
@@ -159,46 +180,92 @@ def wav_to_pcm(src_file,tgt_file):
     except:
         return False
 
+def pcm_to_wav(src_file, tgt_file):
+    try:
+        with open(src_file, 'rb') as pcmfile:
+            pcmdata = pcmfile.read()
+        with wave.open(tgt_file, 'wb') as wavfile:
+            wavfile.setparams((1, 2, 16000, 0, 'NONE', 'NONE'))
+            wavfile.writeframes(pcmdata)
+        return True
+    except:
+        return False
+
+def wav_to_mp3(src_file, tgt_file):
+    '''
+    wav to mp3
+    :param src_file:
+    :param tgt_file:
+    :return:
+    '''
+    try:
+        wav_audio = AudioSegment.from_file(src_file, format="wav")
+        wav_audio.export(tgt_file, format="mp3")
+        return True
+    except:
+        return False
+
+def mp3_to_wav(src_file, tgt_file):
+    '''
+    mp3 to wav
+    :param src_file: mp3 file
+    :param tgt_file: wav file
+    :return:
+    '''
+    try:
+        sound = AudioSegment.from_file(src_file)
+        sound = sound.set_frame_rate(16000)
+        sound = sound.set_channels(1)
+        sound.export(tgt_file, format="wav")  # , parameters=["-vn", "-ar", "16000", "-ac", "1"]
+        return True
+    except:
+        return False
+
+
 ###################################### Audio split ##############################################################
 '''
     选择单个文件
 '''
 def select_src_file_split():
     # 选择文件path_接收文件地址
-    src_file_path_split_split = tk.filedialog.askopenfilename()
+    src_file_path_split_split = tk.filedialog.askopenfilename().replace('/','\\')
     if src_file_path_split_split != '':
         print(src_file_path_split_split)
         entry_src_file_path_input_split.delete(0, tk.END)  # 清空文本框
         entry_src_file_path_input_split.insert(tk.END, src_file_path_split_split)  # 填充文本框
+    trans_progress(canvas_split, 1, 0, "white")
 '''
     选择文件夹
 '''
 def select_src_folder_split():
-    src_file_path_split_split = tk.filedialog.askdirectory()
+    src_file_path_split_split = tk.filedialog.askdirectory().replace('/','\\')
     if src_file_path_split_split != '':
         print(src_file_path_split_split)
         entry_src_file_path_input_split.delete(0,tk.END)          #清空文本框
         entry_src_file_path_input_split.insert(tk.END,src_file_path_split_split)  #填充文本框
+    trans_progress(canvas_split, 1, 0, "white")
 
 '''
     选择目标文件夹
 '''
 def select_tgt_folder_split():
-    tgt_file_path_split = tk.filedialog.askdirectory()
+    tgt_file_path_split = tk.filedialog.askdirectory().replace('/','\\')
     if tgt_file_path_split != '':
         print(tgt_file_path_split)
         entry_tgt_file_path_input_split.delete(0,tk.END)          #清空文本框
         entry_tgt_file_path_input_split.insert(tk.END,tgt_file_path_split)  #填充文本框
+    trans_progress(canvas_split, 1, 0, "white")
 
 '''
     选择时间分片excel文件
 '''
 def select_segment_file_split():
-    segment_file_split_path = tk.filedialog.askopenfilename(filetypes=[("文本文件", "*.xlsx"),])
+    segment_file_split_path = tk.filedialog.askopenfilename(filetypes=[("文本文件", "*.xlsx"),]).replace('/','\\')
     if segment_file_split_path != '':
         print(segment_file_split_path)
         entry_segment_file_path.delete(0,tk.END)          #清空文本框
         entry_segment_file_path.insert(tk.END,segment_file_split_path)  #填充文本框
+    trans_progress(canvas_split, 1, 0, "white")
 
 '''
     开始音频分割响应
@@ -267,7 +334,7 @@ def get_video_info(excel_file,first_name):
     rows = sheet.max_row  # 行数
     print(rows)
     # columns = sheet.max_column                      #列数
-    file_name = first_name
+    file_name = str(first_name)
     segment_cnt = 0
     file_dict = {}
     segment_dict = {}
@@ -275,14 +342,23 @@ def get_video_info(excel_file,first_name):
         video_name = sheet.cell(row=i, column=1).value  #音频名
         begin = sheet.cell(row=i, column=2).value       #segment begin
         end = sheet.cell(row=i, column=3).value        #segment end
+        print(begin, end)
+        if begin is None and end is None:
+            break
         # 需要对begin和end时间进行判断,判断格式是否为00:00:00 ，begin是否小于end
         if len(begin.split(':')) < 3:
             begin = '00:' * (3 - len(begin.split(':'))) + begin
         if len(end.split(':')) < 3:
             end = '00:' * (3 - len(end.split(':'))) + end
+        begin = time_check(begin)
+        end = time_check(end)
         if time_trans(begin) >= time_trans(end):
             # 退出当前转换，并打印相关信息
             print('The time of begin and end is error, please check it.')
+            sys.exit(1)
+        # if not (time_check(begin) and time_check(end)):
+        #     print('The time of begin and end is error, please check it.')
+        #     sys.exit(1)
         if video_name is not None and video_name == first_name:
             # segment_dict.setdefault(str(segment_cnt), {'begin': begin, 'end': end})
             video_list.append(video_name)
@@ -300,6 +376,8 @@ def get_video_info(excel_file,first_name):
         segment_dict.setdefault(str(segment_cnt),{'begin':begin,'end':end})
         segment_cnt += 1
         # video_list.append(video_name)
+        # 最后一个保存到字典
+        file_dict.setdefault(file_name, segment_dict)
     return file_dict
 
 '''
@@ -307,17 +385,36 @@ def get_video_info(excel_file,first_name):
 '''
 def cut_audio(file_dict,src_video,tgt_video):
     file_num = len(file_dict.keys())
+    print(file_dict)
     file_cnt = 0
     for key in file_dict.keys():
-        cnt = 0
-        for seg in file_dict.get(key).keys():
-            begin = file_dict.get(key).get(seg)['begin']
-            end = file_dict.get(key).get(seg)['end']
-            ffmpeg_cmd = "ffmpeg -i %s -ss %s -to %s %s" %(os.path.join(src_video,key + '.wav'),begin, end, os.path.join(tgt_video,key + "_" + str(cnt) + '.wav'))
-            cnt += 1
-            # os.system(ffmpeg_cmd)
+        key = str(key)
+        src_files = file_gallery(src_video)
+        for file in src_files:
+            if key in file:
+                src_format = file.replace(key, '')
+        if len(file_dict.get(key).keys()) == 1:
+            begin = file_dict.get(key).get('0')['begin']
+            end = file_dict.get(key).get('0')['end']
+            ffmpeg_cmd = "ffmpeg -i %s -ss %s -to %s -vcodec copy -acodec copy  %s" % (
+            # os.path.join(src_video, key + '.mp4'), begin, end, os.path.join(tgt_video, key + '.mp4'))
+                os.path.join(src_video, key + src_format), begin, end, os.path.join(tgt_video, key + src_format))
+            print(ffmpeg_cmd)
             res = subprocess.call(ffmpeg_cmd, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   stderr=subprocess.PIPE)
+        else:
+            cnt = 0
+            count = len(str(len(file_dict.get(key))))
+            for seg in file_dict.get(key).keys():
+                spam_file_name = '0' * (count - len(str(cnt))) + str(cnt)
+                begin = file_dict.get(key).get(seg)['begin']
+                end = file_dict.get(key).get(seg)['end']
+                ffmpeg_cmd = "ffmpeg -i %s -ss %s -to %s -vcodec copy -acodec copy  %s" %(os.path.join(src_video,key + src_format),begin, end, os.path.join(tgt_video,key + "_" + spam_file_name + src_format))
+                cnt += 1
+                # os.system(ffmpeg_cmd)
+                print(ffmpeg_cmd)
+                res = subprocess.call(ffmpeg_cmd, shell=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE)
         file_cnt += 1
         trans_progress(canvas_split, file_num, file_cnt)
 
@@ -328,8 +425,36 @@ def cut_audio(file_dict,src_video,tgt_video):
     将hh:MM:mm 转化为秒
 '''
 def time_trans(s_time):
-    #print(s_time)
-    return int(s_time.split(':')[0]) * 3600 + int(s_time.split(':')[1]) * 60  + int(s_time.split(':')[2])
+    if len(s_time.split(':')[-1]) > 2:
+        # 包含毫秒位
+        return int(s_time.split(':')[0]) * 3600 + int(s_time.split(':')[1]) * 60  + int(s_time.split(':')[2].split('.')[0]) + int(s_time.split(':')[2].split('.')[1]) / 1000
+    else:
+        #print(s_time)  不包含毫秒位
+        return int(s_time.split(':')[0]) * 3600 + int(s_time.split(':')[1]) * 60  + int(s_time.split(':')[2])
+
+
+
+'''
+    检查时间是否是双位, 如果不是双位补齐
+'''
+def time_check(ttime):
+    time_list = ttime.split(":")
+    for i in range(len(time_list)):
+        if len(time_list[i]) < 2:
+            time_list[i] = '0' + time_list[i]
+    return ':'.join(time_list)
+    # for t in :
+    #     if len(t) != 2:
+    #         return False
+    # return True
+
+
+'''
+    返回文件列表
+'''
+def file_gallery(inputdir):
+    for roots, folders, files in os.walk(inputdir):
+        return sorted(files)
 
 
 
@@ -371,7 +496,7 @@ if __name__ == "__main__":
     ## 添加listbox---源格式列表
     src_audio_format = tk.StringVar()     #创建变量，便于取值
     listbox_src_audio_options = ttk.Combobox(first_frame, textvariable=src_audio_format, width=3)
-    listbox_src_audio_options['value'] = ("wav", "mp3")
+    listbox_src_audio_options['value'] = ("wav", "mp3", "pcm", "mp4")
     listbox_src_audio_options.current(0)
     listbox_src_audio_options.grid(row=0, column=5, padx=0, pady=0, ipadx=0, ipady=0)
 
@@ -397,7 +522,7 @@ if __name__ == "__main__":
     ## 添加listbox---源格式列表
     tgt_audio_format = tk.StringVar()  # 创建变量，便于取值
     listbox_tgt_audio_options = ttk.Combobox(second_frame, textvariable=tgt_audio_format, width=3)
-    listbox_tgt_audio_options['value'] = ("wav", "pcm")
+    listbox_tgt_audio_options['value'] = ("wav", "pcm", "mp3")
     listbox_tgt_audio_options.current(0)
     listbox_tgt_audio_options.grid(row=0, column=5, padx=0, pady=0, ipadx=0, ipady=0)
 
